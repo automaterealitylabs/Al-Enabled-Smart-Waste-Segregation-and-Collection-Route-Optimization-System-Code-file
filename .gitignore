@@ -1,5 +1,7 @@
-# Environments
+Get-ChildItem .venv\Scripts\python*.exe# Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/

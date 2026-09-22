@@ -8,12 +8,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
 class Config:
-    # Secret key for session signing (no hardcoded fallback to ensure security)
+    IS_PRODUCTION = os.getenv('RENDER') == 'true' or os.getenv('FLASK_ENV') == 'production'
+
+    # Secret key for session signing
     SECRET_KEY = os.getenv('SECRET_KEY')
-    if not SECRET_KEY and os.getenv('FLASK_ENV') == 'production':
-        raise ValueError("No SECRET_KEY set for Flask application in production")
-        
-    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
+    if IS_PRODUCTION and not SECRET_KEY:
+        raise ValueError(
+            "CRITICAL CONFIGURATION ERROR: SECRET_KEY environment variable is not set. "
+            "In production on Render, SECRET_KEY must be configured in the Render Dashboard "
+            "under Environment Variables to ensure secure session signing."
+        )
+    elif not SECRET_KEY:
+        # Fixed development secret key (do not generate random secret per restart)
+        SECRET_KEY = 'smartwaste-dev-secret-key-not-for-production'
+
+    # Ensure debug mode is strictly disabled in production
+    DEBUG = False if IS_PRODUCTION else os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
 
     # Supabase Configuration
     SUPABASE_URL = os.getenv('SUPABASE_URL')

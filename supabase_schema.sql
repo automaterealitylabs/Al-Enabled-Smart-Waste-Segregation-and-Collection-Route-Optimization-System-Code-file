@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'CITIZEN', -- SUPER_ADMIN, DUMPYARD_ADMIN, DRIVER, CITIZEN
+    role TEXT NOT NULL DEFAULT 'user', -- admin, driver, user
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -126,6 +126,17 @@ CREATE TABLE IF NOT EXISTS locations (
     current_fill_level REAL NOT NULL DEFAULT 0.0,
     current_weight_kg REAL NOT NULL DEFAULT 0.0,
     priority INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'Normal',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 11. Waste Categories Master Table
+CREATE TABLE IF NOT EXISTS waste_categories (
+    id SERIAL PRIMARY KEY,
+    category_name TEXT UNIQUE NOT NULL,
+    waste_type TEXT NOT NULL,
+    recommended_bin_color TEXT NOT NULL,
+    disposal_suggestion TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -140,13 +151,14 @@ ALTER TABLE status_history DISABLE ROW LEVEL SECURITY;
 ALTER TABLE routes DISABLE ROW LEVEL SECURITY;
 ALTER TABLE waste_detections DISABLE ROW LEVEL SECURITY;
 ALTER TABLE locations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE waste_categories DISABLE ROW LEVEL SECURITY;
 
 -- Seed Demo Data
 INSERT INTO users (id, username, email, password_hash, role) VALUES
-(1, 'superadmin', 'super@admin.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'SUPER_ADMIN'),
-(2, 'dumpadmin', 'dump@admin.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'DUMPYARD_ADMIN'),
-(3, 'driver1', 'driver@demo.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'DRIVER'),
-(4, 'citizen1', 'citizen@demo.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'CITIZEN')
+(1, 'superadmin', 'super@admin.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'admin'),
+(2, 'dumpadmin', 'dump@admin.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'admin'),
+(3, 'driver1', 'driver@demo.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'driver'),
+(4, 'citizen1', 'citizen@demo.com', 'scrypt:32768:8:1$n4tqK43sL3wT2t2w$7f9202164478ec094c97ea8a5624773de2916b7ff2308cfd7be1315582cde4b5', 'user')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO dumpyards (id, name, address, latitude, longitude, contact, admin_id) VALUES
@@ -161,8 +173,29 @@ INSERT INTO drivers (id, user_id, name, phone, email, license_number, dumpyard_i
 (1, 3, 'Ramesh Driver', '9876543211', 'driver@demo.com', 'DL-MH-2023-123', 1)
 ON CONFLICT (id) DO NOTHING;
 
+-- Seed Waste Categories
+INSERT INTO waste_categories (id, category_name, waste_type, recommended_bin_color, disposal_suggestion) VALUES
+(1, 'Organic (Wet)', 'Wet Waste', 'Green', 'Dispose in Green Compost Bin. Ideal for food scraps, fruit peels, and organic waste processing.'),
+(2, 'Recyclable Plastic', 'Recyclable Waste', 'Blue', 'Rinse containers and place in Blue Recycling Bin. Suitable for plastic melting and remanufacturing.'),
+(3, 'Dry Paper & Cardboard', 'Dry Waste', 'Blue', 'Flatten cardboard boxes and keep dry. Dispose in Blue Bin for paper pulp recycling.'),
+(4, 'Recyclable Glass', 'Recyclable Waste', 'Blue', 'Clean glass containers and place in Blue Bin. Handle with care to prevent breakage.'),
+(5, 'Recyclable Metal', 'Recyclable Waste', 'Blue', 'Rinse metal cans and place in Blue Bin for metal smelting and recycling.'),
+(6, 'Non-Recyclable Trash', 'General Waste', 'Black', 'Dispose in Black General Waste Bin for safe landfill or municipal incineration.')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Collection Bins / Locations
+INSERT INTO locations (id, location_name, latitude, longitude, capacity_kg, current_fill_level, current_weight_kg, priority, status) VALUES
+(1, 'Bin #1 - Academic Block A', 18.5204, 73.8567, 100.0, 85.0, 75.0, 4, 'Needs Collection'),
+(2, 'Bin #2 - Campus Cafeteria', 18.5245, 73.8610, 150.0, 95.0, 130.0, 5, 'Overflown'),
+(3, 'Bin #3 - Student Hostel Gate 1', 18.5180, 73.8520, 120.0, 70.0, 80.0, 3, 'Needs Collection'),
+(4, 'Bin #4 - Library Complex', 18.5290, 73.8650, 100.0, 40.0, 35.0, 2, 'Normal'),
+(5, 'Bin #5 - Sports Complex', 18.5150, 73.8590, 100.0, 90.0, 88.0, 5, 'Overflown')
+ON CONFLICT (id) DO NOTHING;
+
 -- Reset sequence generator to avoid ID collision
-SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
-SELECT setval('dumpyards_id_seq', (SELECT MAX(id) FROM dumpyards));
-SELECT setval('vehicles_id_seq', (SELECT MAX(id) FROM vehicles));
-SELECT setval('drivers_id_seq', (SELECT MAX(id) FROM drivers));
+SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM users));
+SELECT setval('dumpyards_id_seq', (SELECT COALESCE(MAX(id), 1) FROM dumpyards));
+SELECT setval('vehicles_id_seq', (SELECT COALESCE(MAX(id), 1) FROM vehicles));
+SELECT setval('drivers_id_seq', (SELECT COALESCE(MAX(id), 1) FROM drivers));
+SELECT setval('locations_id_seq', (SELECT COALESCE(MAX(id), 1) FROM locations));
+SELECT setval('waste_categories_id_seq', (SELECT COALESCE(MAX(id), 1) FROM waste_categories));
