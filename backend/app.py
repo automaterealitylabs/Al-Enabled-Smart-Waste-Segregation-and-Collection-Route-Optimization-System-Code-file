@@ -12,6 +12,7 @@ from backend.routes.classification_routes import classification_bp
 from backend.routes.route_routes import route_bp
 from backend.routes.dashboard_routes import dashboard_bp
 from backend.routes.admin_routes import admin_bp
+from backend.routes.report_routes import report_bp
 
 def create_app(config_class=Config):
     app = Flask(__name__, 
@@ -21,7 +22,7 @@ def create_app(config_class=Config):
     # Load configuration
     app.config.from_object(config_class)
 
-    # Initialize SQLite database
+    # Initialize Supabase database teardown handler
     init_db(app)
 
     # Register API Blueprints
@@ -30,6 +31,7 @@ def create_app(config_class=Config):
     app.register_blueprint(route_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(report_bp)
 
     @app.route('/')
     def index():
@@ -71,5 +73,7 @@ def create_app(config_class=Config):
 app = create_app()
 
 if __name__ == '__main__':
-    print("Starting development server. Please use wsgi.py for production.")
-    app.run(host='127.0.0.1', port=5000, debug=app.config.get('DEBUG', False))
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    print(f"Starting development server on 0.0.0.0:{port}. Use wsgi.py for production.")
+    app.run(host='0.0.0.0', port=port, debug=app.config.get('DEBUG', False))
