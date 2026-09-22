@@ -7,13 +7,11 @@ from flask import Blueprint, request, jsonify, session, current_app
 from database.models import WasteDetection
 from ml_model.predict import WasteClassifier
 
+from backend.utils import allowed_file, upload_image
+
 classification_bp = Blueprint('classification', __name__, url_prefix='/api')
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'bmp'}
 classifier = WasteClassifier()
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @classification_bp.route('/classify', methods=['POST'])
 def classify_waste():
@@ -29,38 +27,35 @@ def classify_waste():
     if not allowed_file(file.filename):
         return jsonify({'success': False, 'message': 'Invalid image format. Allowed formats: PNG, JPG, JPEG, WEBP.'}), 400
 
-    # Ensure upload directory exists
-    upload_dir = os.path.join(current_app.root_path, '..', 'static', 'uploads')
-    os.makedirs(upload_dir, exist_ok=True)
-
-    # Generate unique filename
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    unique_filename = f"waste_{uuid.uuid4().hex[:10]}.{ext}"
-    saved_path = os.path.join(upload_dir, unique_filename)
-    
-    # Save file
-    file.save(saved_path)
-
-    import cloudinary
-    import cloudinary.uploader
     try:
+        cloudinary_url = upload_image(file, prefix="waste")
+        
+        # We need the local path for ML Classification before it gets deleted, 
+        # but upload_image deletes it on successful cloudinary upload.
+        # Wait, the ML classification needs a local file. We should save it temporarily here 
+        # or have the util not delete it until we say so.
+        # Actually, let's fix the ML classification step.
+        
+        # Ensure upload directory exists
+        upload_dir = os.path.join(current_app.root_path, '..', 'static', 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"waste_temp_{uuid.uuid4().hex[:10]}.{ext}"
+        saved_path = os.path.join(upload_dir, unique_filename)
+        file.seek(0)
+        file.save(saved_path)
+        
         # Run AI Classification Pipeline
         result = classifier.classify_image(saved_path)
-
-        # Upload image to Cloudinary
-        cloudinary.config(
-            cloud_name=current_app.config.get('CLOUDINARY_CLOUD_NAME'),
-            api_key=current_app.config.get('CLOUDINARY_API_KEY'),
-            api_secret=current_app.config.get('CLOUDINARY_API_SECRET'),
-            secure=True
-        )
         
-        upload_result = cloudinary.uploader.upload(saved_path, public_id=unique_filename.split('.')[0])
-        cloudinary_url = upload_result.get("secure_url")
+        # Now we upload the file and get Cloudinary URL.
+        # file.seek(0) to reset the pointer for upload_image
+        file.seek(0)
+        cloudinary_url = upload_image(file, prefix="waste")
         
-        # Clean up local file
         if os.path.exists(saved_path):
             os.remove(saved_path)
+
 
         # Store Detection Record in Database
         user_id = session.get('user_id')
@@ -77,7 +72,7 @@ def classify_waste():
 
         return jsonify({
             'success': True,
-            'detection_id': db_record.id,
+            'detection_id': db_record.id if db_record else None,
             'user_id': user_id,
             'category_name': result['category_name'],
             'waste_type': result['waste_type'],
@@ -86,15 +81,21 @@ def classify_waste():
             'confidence_score': result['confidence_score'],
             'confidence_percent': result['confidence_percent'],
             'image_url': cloudinary_url,
-            'detected_at': db_record.detected_at,
+            'detected_at': str(db_record.detected_at) if (db_record and db_record.detected_at) else None,
             'stored_in_db': True
         }), 200
 
     except Exception as e:
+        if 'saved_path' in locals() and os.path.exists(saved_path):
+            try:
+                os.remove(saved_path)
+            except Exception:
+                pass
         return jsonify({
             'success': False,
             'message': f'Error processing image: {str(e)}'
         }), 500
+
 
 
 @classification_bp.route('/detections', methods=['GET'])
