@@ -3,7 +3,7 @@ Admin Management & Access Control API Blueprint
 """
 from functools import wraps
 from flask import Blueprint, request, jsonify, session
-from database.models import User, WasteCategory, WasteDetection, Location, Route
+from database.models import User, WasteCategory, WasteDetection, Location, Route, WasteReport, Vehicle
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
@@ -11,7 +11,8 @@ def admin_required(f):
     """Decorator to enforce Admin Role Authorization on routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if session.get('role') != 'admin':
+        role = str(session.get('role', '')).lower()
+        if role not in ['admin', 'super_admin']:
             return jsonify({
                 'success': False,
                 'message': 'Access denied. Administrative privileges required.'
@@ -142,3 +143,53 @@ def delete_route(route_id):
     """Delete a route optimization log."""
     Route.delete(route_id)
     return jsonify({'success': True, 'message': f'Route log #{route_id} deleted.'}), 200
+
+# 7. Report Acceptance & Vehicle Assignment
+@admin_bp.route('/reports/<int:report_id>/accept', methods=['POST'])
+@admin_required
+def accept_report(report_id):
+    """
+    Admin accepts a report.
+    System checks available vehicles for the assigned dumpyard.
+    If available: assign vehicle to report, update vehicle status.
+    If none: set report to WAITING_FOR_VEHICLE.
+    """
+    report = WasteReport.get_by_id(report_id)
+    if not report:
+        return jsonify({'success': False, 'message': 'Report not found.'}), 404
+
+    if not report.assigned_dumpyard_id:
+        return jsonify({'success': False, 'message': 'Report does not have an assigned dumpyard.'}), 400
+
+    vehicles = Vehicle.get_by_dumpyard(report.assigned_dumpyard_id)
+    available_vehicles = [v for v in vehicles if v.status == 'AVAILABLE']
+
+    if available_vehicles:
+        selected_vehicle = available_vehicles[0]
+        # Assign vehicle to report and mark ASSIGNED
+        updated_report = WasteReport.update_status(
+            report_id=report.id, 
+            status='ASSIGNED', 
+            vehicle_id=selected_vehicle.id
+        )
+        # Mark vehicle as ASSIGNED
+        Vehicle.update_status(selected_vehicle.id, 'ASSIGNED')
+        
+        return jsonify({
+            'success': True,
+            'message': 'Report accepted and vehicle assigned.',
+            'report_status': 'ASSIGNED',
+            'assigned_vehicle_id': selected_vehicle.id
+        }), 200
+    else:
+        # No vehicle available
+        updated_report = WasteReport.update_status(
+            report_id=report.id, 
+            status='WAITING_FOR_VEHICLE'
+        )
+        return jsonify({
+            'success': True,
+            'message': 'Report accepted, but no vehicle available. Status set to WAITING_FOR_VEHICLE.',
+            'report_status': 'WAITING_FOR_VEHICLE',
+            'assigned_vehicle_id': None
+        }), 200
